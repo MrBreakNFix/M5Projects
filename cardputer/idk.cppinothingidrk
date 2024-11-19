@@ -1,0 +1,123 @@
+#include <M5Cardputer.h>
+#include <M5GFX.h>
+#include <NimBLEDevice.h>
+
+// BLE UUIDs (can be customized)
+#define SERVICE_UUID "1bc68b2a-f3e3-11e9-81b4-2a2ae2dbcce4"
+#define CHARACTERISTIC_RX_UUID "1bc68da0-f3e3-11e9-81b4-2a2ae2dbcce4"
+#define CHARACTERISTIC_TX_UUID "1bc68efe-f3e3-11e9-81b4-2a2ae2dbcce4"
+
+// BLE server-related variables
+BLEServer *pServer = nullptr;
+BLEService *pService = nullptr;
+BLECharacteristic *pTxCharacteristic;
+bool deviceConnected = false;  // Flag to indicate whether a device is connected
+
+// Callbacks for BLE server connection and disconnection
+class MyServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer *pServer) {
+        deviceConnected = true;
+        M5Cardputer.Display.fillScreen(TFT_BLACK);
+        M5Cardputer.Display.setTextSize(0.5);
+        M5Cardputer.Display.setTextColor(TFT_GREEN);
+        M5Cardputer.Display.setCursor(10, 10);
+        M5Cardputer.Display.println("Device Connected");
+    }
+
+    void onDisconnect(BLEServer *pServer) {
+        deviceConnected = false;
+        M5Cardputer.Display.fillScreen(TFT_BLACK);
+        M5Cardputer.Display.setTextSize(0.5);
+        M5Cardputer.Display.setTextColor(TFT_RED);
+        M5Cardputer.Display.setCursor(10, 10);
+        M5Cardputer.Display.println("Device Disconnected");
+    }
+};
+
+// Callback for BLE scanning results
+class AdvertisedDeviceCallbacks : public NimBLEAdvertisedDeviceCallbacks {
+    void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+        String bt_name = advertisedDevice->getName().c_str();
+        String bt_address = advertisedDevice->getAddress().toString().c_str();
+        String bt_signal = String(advertisedDevice->getRSSI());
+
+        // Display found device information on the screen
+        M5Cardputer.Display.fillScreen(TFT_BLACK);
+        M5Cardputer.Display.setTextSize(0.5);
+        M5Cardputer.Display.setTextColor(TFT_WHITE);
+        M5Cardputer.Display.setCursor(10, 10);
+        M5Cardputer.Display.printf("Found Device:\n");
+        M5Cardputer.Display.printf("Name: %s\n", bt_name.c_str());
+        M5Cardputer.Display.printf("Address: %s\n", bt_address.c_str());
+        M5Cardputer.Display.printf("Signal: %s dBm\n", bt_signal.c_str());
+    }
+};
+
+// Function to initialize BLE server
+void initBLEServer() {
+    BLEDevice::init("M5Cardputer");  // Initialize BLE with a name for the device
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    // Create a service and characteristic for communication
+    pService = pServer->createService(SERVICE_UUID);
+    pTxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_RX_UUID, NIMBLE_PROPERTY::NOTIFY);
+
+    pTxCharacteristic->addDescriptor(new NimBLE2904());  // For notifications
+
+    BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_TX_UUID, NIMBLE_PROPERTY::WRITE);
+
+    pService->start();  // Start the service
+    pServer->getAdvertising()->start();  // Start advertising to allow devices to connect
+}
+
+// Function to set up and start BLE scanning
+void startBLEScan() {
+    BLEScan *pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new AdvertisedDeviceCallbacks());
+    pBLEScan->setActiveScan(true);  // Active scan to get faster results
+    pBLEScan->setInterval(100);  // Scan interval
+    pBLEScan->setWindow(99);  // Scan window size
+    pBLEScan->start(5, false);  // Scan for 5 seconds (non-blocking)
+}
+
+void setup() {
+    // Initialize M5Cardputer
+    M5Cardputer.begin();
+    M5Cardputer.Display.setRotation(1);
+    M5Cardputer.Display.setTextSize(0.5);
+    M5Cardputer.Display.setTextFont(&fonts::FreeSerifBoldItalic18pt7b);
+    
+    // Set up initial display
+    M5Cardputer.Display.fillRect(0, 0, M5Cardputer.Display.width(), M5Cardputer.Display.height() - 28, GREEN);
+    M5Cardputer.Display.fillRect(0, M5Cardputer.Display.height() - 4, M5Cardputer.Display.width(), 4, GREEN);
+    
+    M5Cardputer.Display.setTextSize(0.5);
+    M5Cardputer.Display.setCursor(10, 10);
+    M5Cardputer.Display.println("Initializing BLE...");
+    
+    // Initialize BLE server
+    initBLEServer();
+    delay(1000);  // Wait for a while to initialize BLE
+}
+
+void loop() {
+    M5Cardputer.update();  // Update the M5Cardputer hardware (buttons, touchscreen)
+
+    // Start scanning for nearby BLE devices
+    startBLEScan();
+    
+    // Check the BLE connection status and update the display accordingly
+    if (deviceConnected) {
+        M5Cardputer.Display.setCursor(10, 50);
+        M5Cardputer.Display.println("BLE Connected");
+    } else {
+        M5Cardputer.Display.setCursor(10, 50);
+        M5Cardputer.Display.println("BLE Disconnected");
+    }
+
+    delay(1000);  // Delay before the next loop iteration
+}
+instead make it be a bluetooth device that other devices connect, and print what device or lack there of that it is connected to every second
